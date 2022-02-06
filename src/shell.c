@@ -90,14 +90,15 @@ int main() {
 		{
 			bg = 1; /* Background mode : ON */
 			if (fork() == 0)
-			{
+			{	/* On execute la commande dans le processus fils */
 				execvp(tokens[0], tokens);
 				fprintf(stderr,"%s : command not found\n", tokens[0]);
 				exit(1); 
 			}
 		}
 		else
-		{
+		{	/* FLAG (booléan) bg sera utilisé après pour indiquer au père *
+			 *          	s'il doit attendre ou pas                     */
 			bg = 0; /* Background mode : OFF */
 		}
 
@@ -110,7 +111,8 @@ int main() {
 
 			char* file_out = trouve_redirection(tokens, ">");
 
-			if (file_out != NULL) // S'il existe une redirection dans la cmd
+			/* S'il existe une redirection dans la cmd */
+			if (file_out != NULL)
 			{
 				int file_descriptor;
 				// Ici on vérifie si l'appel à open() s'est bien passé
@@ -129,10 +131,11 @@ int main() {
 
 			char* file_in = trouve_redirection(tokens, "<");
 
-			if (file_in != NULL) // S'il existe une redirection dans la cmd
+			/* S'il existe une redirection dans la cmd */
+			if (file_in != NULL)
 			{
 				int file_descriptor;
-				// Ici on vérifie si l'appel à open() s'est bien passé
+				/* Ici on vérifie si l'appel à open() s'est bien passé */
 				if ((file_descriptor = open(file_in, O_RDONLY, 0644)) < 0)
 				{
 					perror(file_out);	// erreur
@@ -152,14 +155,14 @@ int main() {
 
 		if ((reste_commande = trouve_tube(tokens, "|")) != NULL)
 		{
-			char** tmp = tokens;
+			char** cmd = tokens;
 
 			int PID;
 			int fd[2];
-			int fd_in = 0;
+			int joint = 0;
 			int last = 0;
 
-			while (tmp != NULL)
+			while (cmd != NULL)
 			{
 				if (pipe(fd) == -1)
 				{
@@ -168,139 +171,52 @@ int main() {
 				} 
 
 				// Utilisé pour le débogage
-				// printf("<%s>\n", *(tmp));
+				// printf("<%s>\n", *(cmd));
 
 				/* Ici l'idée est de fabriquer une sorte de "chaine" de pipes */
+				
 				if ((PID = fork()) == -1)
-		        {
+		        { /* En cas d'erreur */
 		          perror("fork");
 		          exit(1);
 		        }
-			    else if (PID == 0)
+			    else if (PID == 0) /* Fils */
 		        {
-		          dup2(fd_in, 0); // On change l'entrée selon l'ancienne
-		          if (!last)
+		          dup2(joint, 0); /* On change l'entrée selon l'ancienne */
+		          
+		          if (!last) /* Si ce n'est pas la dernière commande de la chaine */
 		            dup2(fd[1], 1);
+
 		          close(fd[0]);
-		          execvp(tmp[0], tmp);
+		          execvp(cmd[0], cmd);
 		          perror("execvp");
 		          exit(1);
 		        }
 			    else
 		        {
 		          wait(NULL);
+
 		          close(fd[1]);
-		          fd_in = fd[0]; // On garde l'entrée pour la prochaine commande
-		          tmp = reste_commande;
-				  reste_commande = trouve_tube(tmp, "|");
+
+		          joint = fd[0]; /* On garde l'entrée pour la prochaine commande */
+		          	
+		          cmd = reste_commande;
+				  reste_commande = trouve_tube(cmd, "|");
+
 				  if (reste_commande == NULL)
 				  {
 				  	last = 1;
 				  }
 		        }
 			}
-		exit(0);
+		exit(0); /* On ne veut pas partir plus loin ! */
 		}
-
-		// char** reste_commande;
-		// int last = 0;
-		// if ((reste_commande = trouve_tube(tokens, "|")) != NULL)
-		// {
-		// 	char** tmp = tokens;
-		// 	while (tmp[0] != NULL)
-		// 	{
-		// 		printf("<%s>\n", *(tmp));
-
-		// 		tmp = reste_commande;
-		// 		reste_commande = trouve_tube(tmp, "|");
-		// 		// printf("reste_commande = <%s>\n", *(reste_commande));
-		// 		if (reste_commande == NULL)
-		// 		{
-		// 			printf("LAST\n");
-		// 			last = 1;
-		// 		}
-		// 	}
-		// }
-
-		// 	if (reste_commande != NULL)
-		// 	{
-
-
-
-		// 	char** cmd = tokens;
-
-		// 	while (cmd != NULL)
-		// 	{
-		// 	// ne rentre ici que lorsque l'opérateur | est présent dans la commande 
-
-		// 	// 	switch (PID = fork())
-		// 	// 	{
-		// 	// 		case 0: /* fils */
-		// 	// 			close(fd[0]); 		/* pas besoin de garder ce bout */
-		// 	// 			dup2(fd[1], 1);	/* ce bout du tube devient la sortie standard */
-		// 	// 			execvp(tokens[0], tokens);	/* run the command */
-		// 	// 			perror(tokens[0]);	/* it failed! */
-
-		// 	// 		default: /* parent does nothing */
-		// 	// 			break;
-
-		// 	// 		case -1:
-		// 	// 			perror("fork");
-		// 	// 			exit(1);
-		// 	// 	}
-
-		// 	// 	switch (PID = fork())
-		// 	// 	{
-		// 	// 	case 0:  /* child */
-		// 	// 		close(fd[1]);		/* this process doesn't need the other end */
-		// 	// 		dup2(fd[0], 0);	/* this end of the pipe becomes the standard input */
-		// 	// 		execvp(reste_commande[0], reste_commande);	/* run the command */
-		// 	// 		perror(reste_commande[0]);	/* it failed! */
-
-		// 	// 	default: /* parent does nothing */
-		// 	// 		break;
-
-		// 	// 	case -1:
-		// 	// 		perror("fork");
-		// 	// 		exit(1);
-		// 	// 	}
-		// 	// wait(NULL);
-		// 	// close(fd[1]);
-		// 	// wait(NULL);
-		// 	// exit(0);
-
-	 //      pipe(fd); 
-
-	 //      if ((PID = fork()) == -1)
-	 //      { 
-	 //          exit(EXIT_FAILURE);
-	 //      }
-
-	 //      else if (PID == 0)
-	 //      { 
-	 //          dup2(fd_in, 0); //change the input according to the old one
-	 //          if (reste_commande != NULL)
-	 //            dup2(fd[1], 1);
-	 //          close(fd[0]);
-	 //          execvp(reste_commande[0], reste_commande);
-	 //          exit(EXIT_FAILURE);
-	 //      }
-	 //      else
-	 //      { 
-	 //          wait(NULL);
-	 //          close(fd[1]);
-	 //          fd_in = fd[0]; //save the input for the next command
-	 //          //tokens = trouve_tube(reste_commande, "|");
-	 //      }
-		// }
-		// exit(0);
-		// }
-
 			/* On exécute la commande donné par l'utilisateur.
 			 * Son nom est dans le premier token (le premier mot tapé)
 			 * ses arguments (éventuels) seront les tokens suivants */
 			execvp(tokens[0], tokens);
-			
+
+			/* Gestion de l'erreur */
 			fprintf(stderr,"%s : command not found\n", tokens[0]);
 			exit(1); 
 			
@@ -309,10 +225,11 @@ int main() {
 			// exit(1);
 		}
 		else
-		{
-			if (!bg) // cat n.txt | sort
+		{	/* Parent */
+			if (!bg) /* S'il ne s'agit pas d'une commande en arrière-plan */
 			{
 				int status;
+				/* On attend */
 				if (waitpid(pid, &status, 0) < 0)
 				{
 					perror("waitpid error");
@@ -321,45 +238,3 @@ int main() {
 		}
 	}
 }
-
-/********** Version 2 pipes **********/
-
-			// 	switch (PID = fork()) {
-
-			// 	case 0: /* child 1 */
-			// 		close(fd[0]); 		/* this process don't need the other end */
-			// 		dup2(fd[1], 1);	/* this end of the pipe becomes the standard output */
-			// 		execvp(tokens[0], tokens);	/* run the command */
-			// 		perror(tokens[0]);	/* it failed! */
-
-			// 	default: /* parent does nothing */
-			// 		break;
-
-			// 	case -1:
-			// 		perror("fork");
-			// 		exit(1);
-			// 	}
-			// 	wait(NULL);
-
-			// 	switch (PID = fork())
-			// 	{
-
-			// 		case 0: /* child 2 */
-			// 			close(fd[1]);		/* this process doesn't need the other end */
-			// 			dup2(fd[0], 0);	/* this end of the pipe becomes the standard input */
-			// 			execvp(reste_commande[0], reste_commande);	/* run the command */
-			// 			perror(reste_commande[0]);	/* it failed! */
-
-			// 		default: /* parent does nothing */
-			// 			break;
-
-			// 		case -1:
-			// 			perror("fork");
-			// 			exit(1);
-			// 	}
-			// 	close(fd[0]);close(fd[1]);
-			// 	wait(NULL);
-			// 	exit(0);
-			// }
-
-			/**************************************************/
